@@ -1,12 +1,11 @@
 # Copilot Tool ACL
 
-A single-file, YAML-based Access Control List (ACL) for the [Microsoft Copilot SDK](https://learn.microsoft.com/en-us/azure/ai-services/agents/).
+> [!CAUTION]
+> **Security notice:** This utility helps you define tool access policies, but **it is not a substitute for thorough security review**. Regex rules can be bypassed by creative input if patterns are too broad. You **must** test your ACL rules against real-world inputs, including adversarial cases, before deploying to production. The authors accept no liability for security incidents arising from misconfigured rules.
+
+A single-file, YAML-based Access Control List (ACL) for the [Microsoft Copilot SDK](https://pypi.org/project/copilot-sdk/).
 
 Control exactly which tools, shell commands, file reads/writes, URLs, and MCP operations your Copilot agent is allowed to use — with a simple, declarative YAML file.
-
-## Why?
-
-The Copilot SDK gives agents powerful capabilities: running shell commands, reading/writing files, fetching URLs, and calling MCP tools. In production, you need guardrails. This utility lets you define precise access control rules in a YAML file that's easy to read, review, and version-control.
 
 **Key features:**
 - **Single file** — drop `tool_acl.py` into any project
@@ -16,29 +15,40 @@ The Copilot SDK gives agents powerful capabilities: running shell commands, read
 - **Five permission kinds** — `shell`, `read`, `write`, `url`, `mcp`
 - **No dependencies** beyond PyYAML (which you likely already have)
 
-## Quick Start
+## Usage
 
-### 1. Copy the script
+### 1. Copy `tool_acl.py` into your project
 
-```bash
-# Copy tool_acl.py into your project
-cp tool_acl.py /path/to/your/copilot-project/
-```
-
-### 2. Create a YAML ACL file
-
-Create `tools_acl.yaml` in your project root:
+### 2. Create a `tools_acl.yaml` file
 
 ```yaml
 version: "1"
 default_action: deny
 
 rules:
-  # Allow safe shell commands
+  # Block dangerous commands first
+  - kind: shell
+    action: deny
+    when:
+      command: "\\b(rm|rmdir|mkfs|dd|shred)\\b"
+
+  # Block privilege escalation
+  - kind: shell
+    action: deny
+    when:
+      command: "^(sudo|su)\\b"
+
+  # Allow safe read-only commands
   - kind: shell
     action: allow
     when:
-      command: "^(echo|cat|ls|grep)\\b"
+      command: "^(echo|cat|ls|grep|head|tail|wc|find)\\b"
+
+  # Block reading secrets
+  - kind: read
+    action: deny
+    when:
+      path: "(\\.ssh/|/etc/shadow|\\.env$)"
 
   # Allow reading project files
   - kind: read
@@ -51,50 +61,64 @@ rules:
     action: allow
     when:
       path: "^/tmp/"
+
+  # Allow HTTPS URLs to trusted domains
+  - kind: url
+    action: allow
+    when:
+      url: "^https://([a-z0-9-]+\\.)?(microsoft\\.com|github\\.com)/"
+
+  # Allow read-only MCP tools
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^(read_|get_|list_|search_)"
 ```
 
-### 3. Wire it up
-
-**Option A: Environment variable (recommended)**
-
-```bash
-export TOOL_ACL_PATH=tools_acl.yaml
-```
-
-Then in your Copilot SDK integration:
+### 3. Wire it into the Copilot SDK `on_permission_request` hook
 
 ```python
+import asyncio
+from copilot import CopilotClient, SessionConfig, MessageOptions
+from copilot.types import PermissionRequest, PermissionRequestResult
 from tool_acl import ToolAcl
 
-acl = ToolAcl.from_env()  # reads TOOL_ACL_PATH
-if acl is None:
-    print("WARNING: No ACL configured, all tools auto-approved")
-```
-
-**Option B: Explicit file path**
-
-```python
-from tool_acl import ToolAcl
-
+# Load the ACL once at startup
 acl = ToolAcl.from_file("tools_acl.yaml")
+
+
+def on_permission_request(
+    req: PermissionRequest, ctx: dict
+) -> PermissionRequestResult:
+    """Called by the Copilot SDK for every tool/shell/file/URL permission check."""
+    if acl.is_allowed(req):
+        return PermissionRequestResult(kind="approved")
+    else:
+        return PermissionRequestResult(kind="denied-by-rules", rules=[])
+
+
+async def main():
+    client = CopilotClient()
+    await client.start()
+
+    session = await client.create_session(
+        SessionConfig(
+            model="gpt-4.1",
+            on_permission_request=on_permission_request,
+        )
+    )
+
+    async for event in session.send(MessageOptions(prompt="List files in /tmp")):
+        if event.data and hasattr(event.data, "content") and event.data.content:
+            print(event.data.content)
+
+    await client.stop()
+
+
+asyncio.run(main())
 ```
 
-### 4. Evaluate permission requests
-
-```python
-# The Copilot SDK sends permission requests like this:
-request = {
-    "kind": "shell",
-    "fullCommandText": "echo hello world"
-}
-
-if acl.is_allowed(request):
-    # proceed
-    pass
-else:
-    # deny the operation
-    pass
-```
+That's it. Every time the agent tries to run a shell command, read/write a file, fetch a URL, or call an MCP tool, the Copilot SDK calls `on_permission_request` and your YAML rules decide whether to allow or deny it.
 
 ## YAML Schema Reference
 
@@ -310,45 +334,6 @@ rules:
     action: allow
     when:
       tool: "^generate_weekly_report$"
-```
-
-## Integration with the Copilot SDK
-
-### Using `azure-ai-agentserver-copilot`
-
-The `CopilotAdapter` accepts a `ToolAcl` directly:
-
-```python
-from tool_acl import ToolAcl
-from azure.ai.agentserver.copilot import CopilotAdapter
-
-acl = ToolAcl.from_file("tools_acl.yaml")
-adapter = CopilotAdapter(acl=acl)
-```
-
-Or set the environment variable and the adapter picks it up automatically:
-
-```bash
-export TOOL_ACL_PATH=tools_acl.yaml
-```
-
-### Custom Integration
-
-For any Copilot SDK integration, wire the ACL into the permission callback:
-
-```python
-from tool_acl import ToolAcl
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-acl = ToolAcl.from_file("tools_acl.yaml")
-
-async def on_permission_request(request: dict) -> str:
-    """Called by the Copilot SDK for every tool permission check."""
-    action = acl.evaluate(request)
-    if action == "deny":
-        logging.warning("Denied: %s", request)
-    return action
 ```
 
 ## API Reference
