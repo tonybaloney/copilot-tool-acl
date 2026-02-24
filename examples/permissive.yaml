@@ -1,0 +1,42 @@
+# =============================================================================
+# Tool Access Control List — Permissive / Development Example
+# =============================================================================
+#
+# This example uses an **allow-by-default** posture, suitable for local
+# development and debugging.  Only explicitly dangerous operations are
+# blocked; everything else is allowed.
+#
+# Switch to "deny" for default_action before deploying to production.
+#
+# =============================================================================
+
+version: "1"
+
+# Allow everything unless a rule says otherwise.
+default_action: allow
+
+rules:
+
+  # Block destructive shell commands even in dev mode
+  - kind: shell
+    action: deny
+    when:
+      command: "\\b(rm -rf /|mkfs|dd if=|shred|wipefs)\\b"
+
+  # Block privilege escalation
+  - kind: shell
+    action: deny
+    when:
+      command: "^(sudo|su|doas|pkexec)\\b"
+
+  # Block reading credentials
+  - kind: read
+    action: deny
+    when:
+      path: "(\\.ssh/|/etc/shadow|\\.env$)"
+
+  # Block known exfiltration endpoints
+  - kind: url
+    action: deny
+    when:
+      url: "https?://(.*\\.)?(ngrok\\.io|requestbin\\.com|webhook\\.site)"

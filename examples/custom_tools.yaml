@@ -1,0 +1,65 @@
+# =============================================================================
+# Tool Access Control List — Custom Tool Agent
+# =============================================================================
+#
+# This example is for an agent with custom application tools (e.g. a call
+# center or data analysis agent). Only specific named tools are allowed;
+# shell and system access is completely denied.
+#
+# =============================================================================
+
+version: "1"
+default_action: deny
+
+rules:
+
+  # ---- Application-specific tools ----
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^read_blob$"
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^write_blob$"
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^list_blobs$"
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^transcribe_audio$"
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^parse_transcript$"
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^generate_weekly_report$"
+
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^send_email_with_attachment$"
+
+  # ---- Block all shell/system access ----
+
+  - kind: shell
+    action: deny
+
+  - kind: read
+    action: deny
+
+  - kind: write
+    action: deny
+
+  - kind: url
+    action: deny

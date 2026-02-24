@@ -1,0 +1,182 @@
+# =============================================================================
+# Tool Access Control List — Strict Security Example
+# =============================================================================
+#
+# This example demonstrates a **deny-by-default** ACL suitable for
+# production deployments.  Only explicitly allowed operations are permitted.
+#
+# Rules are evaluated in order — the first matching rule wins.
+# Place deny rules BEFORE allow rules of the same kind to ensure
+# dangerous operations are always blocked.
+#
+# =============================================================================
+
+version: "1"
+
+# If no rule matches, deny by default (safe posture for production).
+default_action: deny
+
+rules:
+
+  # ===========================================================================
+  # SHELL  (kind: shell)
+  # ===========================================================================
+
+  # Always deny destructive or privileged commands first.
+  - kind: shell
+    action: deny
+    when:
+      command: "\\b(rm|rmdir|mkfs|dd|shred|wipefs|fdisk|parted|mkswap)\\b"
+
+  # Deny commands that make outbound network connections from the shell.
+  # The Copilot SDK has a dedicated URL tool for web fetches.
+  - kind: shell
+    action: deny
+    when:
+      command: "^(curl|wget|nc|netcat|ncat|ssh|scp|sftp|ftp|rsync)\\b"
+
+  # Deny privilege escalation
+  - kind: shell
+    action: deny
+    when:
+      command: "^(sudo|su|doas|pkexec)\\b"
+
+  # Allow read-only inspection commands
+  - kind: shell
+    action: allow
+    when:
+      command: "^(echo|printf|cat|head|tail|less|more|wc|tee|tr|cut|sort|uniq|grep|awk|sed|diff|file|stat|du|df|find|ls|ll|la|dir)\\b"
+
+  # Allow Python version checks
+  - kind: shell
+    action: allow
+    when:
+      command: "^python3?\\s+(-V|--version|-m pip list|\\s*-c\\s+[\"']?import\\s)"
+
+  # Allow version checks for common tools
+  - kind: shell
+    action: allow
+    when:
+      command: "^(git|node|npm|uv|pip3?|cargo|go|java|mvn)\\s+(--version|-v|-V|version)\\b"
+
+  # Allow git read-only operations
+  - kind: shell
+    action: allow
+    when:
+      command: "^git\\s+(log|status|diff|show|blame|stash list|ls-files|describe|branch|tag|remote -v)\\b"
+
+  # Allow running unit tests
+  - kind: shell
+    action: allow
+    when:
+      command: "^(pytest|python3?\\s+-m pytest|uv run.*pytest)\\b"
+
+  # Allow safe environment inspection
+  - kind: shell
+    action: allow
+    when:
+      command: "^(env|printenv|set|export -p|whoami|id|pwd|hostname|uname|date|uptime)\\b"
+
+  # ===========================================================================
+  # READ  (kind: read)
+  # ===========================================================================
+
+  # Deny reading credentials and secrets
+  - kind: read
+    action: deny
+    when:
+      path: "(\\.ssh/|/etc/shadow|/etc/sudoers|\\.env$|\\.env\\.local$|/proc/\\d+/mem)"
+
+  # Deny common token / key files
+  - kind: read
+    action: deny
+    when:
+      path: "\\.(key|pem|p12|pfx|crt|cer|token|secret|credential)$"
+
+  # Allow reading anywhere under /tmp
+  - kind: read
+    action: allow
+    when:
+      path: "^/tmp/"
+
+  # Allow reading the project source tree (adjust to your repo root)
+  - kind: read
+    action: allow
+    when:
+      path: "^/home/[^/]+/(projects?|repos?|src|workspace|code)/"
+
+  # Allow reading installed Python packages
+  - kind: read
+    action: allow
+    when:
+      path: "^/usr/lib/python|^/usr/local/lib/python|\\.venv/lib/python"
+
+  # Allow reading basic system info
+  - kind: read
+    action: allow
+    when:
+      path: "^/etc/(hostname|os-release|timezone|localtime|hosts$|resolv\\.conf$)"
+
+  # ===========================================================================
+  # WRITE  (kind: write)
+  # ===========================================================================
+
+  # Allow writes only inside /tmp
+  - kind: write
+    action: allow
+    when:
+      path: "^/tmp/"
+
+  # Allow writes inside the project source tree
+  - kind: write
+    action: allow
+    when:
+      path: "^/home/[^/]+/(projects?|repos?|src|workspace|code)/"
+
+  # ===========================================================================
+  # URL  (kind: url)
+  # ===========================================================================
+
+  # Deny known data-exfiltration / dynamic DNS services
+  - kind: url
+    action: deny
+    when:
+      url: "https?://(.*\\.)?(ngrok\\.io|serveo\\.net|localhost\\.run|requestbin\\.com|pipedream\\.net|webhook\\.site)"
+
+  # Allow Microsoft documentation and services
+  - kind: url
+    action: allow
+    when:
+      url: "^https://([a-z0-9-]+\\.)?microsoft\\.com/"
+
+  # Allow GitHub
+  - kind: url
+    action: allow
+    when:
+      url: "^https://(([a-z0-9-]+\\.)?github\\.com|raw\\.githubusercontent\\.com|objects\\.githubusercontent\\.com)/"
+
+  # Allow Python documentation and package index
+  - kind: url
+    action: allow
+    when:
+      url: "^https://(docs\\.python\\.org|pypi\\.org|files\\.pythonhosted\\.org)/"
+
+  # Allow Azure
+  - kind: url
+    action: allow
+    when:
+      url: "^https://([a-z0-9-]+\\.)?azure\\.com/"
+
+  # ===========================================================================
+  # MCP  (kind: mcp)
+  # ===========================================================================
+
+  # Deny write/delete MCP operations
+  - kind: mcp
+    action: deny
+    when:
+      tool: "(write|create|delete|remove|update|patch|edit|modify)_"
+
+  # Allow everything else from registered MCP servers
+  - kind: mcp
+    action: allow

@@ -1,0 +1,34 @@
+# =============================================================================
+# Tool Access Control List — MCP-Only Agent
+# =============================================================================
+#
+# This example is for an agent that only uses custom MCP tools (no shell,
+# file, or URL access). All permission kinds except MCP are denied.
+# Only specific MCP tools from trusted servers are allowed.
+#
+# =============================================================================
+
+version: "1"
+default_action: deny
+
+rules:
+
+  # ---- Trusted MCP tools ----
+
+  # Allow read operations from any server
+  - kind: mcp
+    action: allow
+    when:
+      tool: "^(read_|get_|list_|search_|fetch_|query_)"
+
+  # Allow tools from a specific trusted server
+  - kind: mcp
+    action: allow
+    when:
+      server: "^my-trusted-server$"
+
+  # Deny destructive MCP tools from all servers
+  - kind: mcp
+    action: deny
+    when:
+      tool: "(delete|drop|truncate|destroy)"
