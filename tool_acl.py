@@ -1,6 +1,6 @@
 """YAML-based tool Access Control List (ACL) for the Copilot SDK.
 
-Drop this single file into any project that uses the Microsoft Copilot SDK
+Drop this single file into any project that uses the GitHub Copilot SDK
 and point the ``TOOL_ACL_PATH`` environment variable at a YAML rule file to
 control which tools, shell commands, file reads/writes, URLs, and MCP
 operations the agent is permitted to use.

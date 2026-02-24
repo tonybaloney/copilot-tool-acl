@@ -3,7 +3,7 @@
 > [!CAUTION]
 > **Security notice:** This utility helps you define tool access policies, but **it is not a substitute for thorough security review**. Regex rules can be bypassed by creative input if patterns are too broad. You **must** test your ACL rules against real-world inputs, including adversarial cases, before deploying to production. The authors accept no liability for security incidents arising from misconfigured rules.
 
-A single-file, YAML-based Access Control List (ACL) for the [Microsoft Copilot SDK](https://pypi.org/project/copilot-sdk/).
+A single-file, YAML-based Access Control List (ACL) for the [GitHub Copilot SDK](https://pypi.org/project/copilot-sdk/).
 
 Control exactly which tools, shell commands, file reads/writes, URLs, and MCP operations your Copilot agent is allowed to use — with a simple, declarative YAML file.
 
